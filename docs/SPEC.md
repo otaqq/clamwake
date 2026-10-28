@@ -1,0 +1,168 @@
+# clamwake — specification (draft)
+
+Keep a MacBook awake with the lid closed while it is plugged in (and, optionally, only on the home network), and let
+it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with Homebrew.
+
+Status: draft, 2026-10-29. First version written (bin/, libexec/), not yet run on a Mac.
+
+## Why
+
+A MacBook used as a small server (for example an Ollama node that another machine sends requests to) goes to sleep
+when its lid is closed, even with `pmset sleep 0` and the charger in. Requests sent to it then hang for minutes:
+the network can wake it only into DarkWake, which does not keep services answering, and it falls asleep again
+after about 40 seconds. The only setting that keeps a Mac awake with the lid closed is `pmset disablesleep 1`. It
+is global (not per power source), so something has to switch it on and off by the conditions below.
+
+## Behaviour
+
+clamwake runs as a root LaunchDaemon (`clamwaked`) and sets `disablesleep` to 1 ("awake") or 0 ("normal").
+
+| Mode | Awake when |
+|---|---|
+| `auto` (default) | on AC power, **and** on a home network (if any are configured), **and** not tripped by heat |
+| `on` | always, unless tripped by heat or the battery is at or below `battery_floor` |
+| `off` | never (clamwake leaves sleep to macOS) |
+
+- The mode is kept across restarts (state file). `clamwake on|off|auto` changes it; `clamwake status` prints one
+  line (mode and decision), `clamwake doctor` the full picture (see "Diagnosis").
+- Whenever clamwake stops, is uninstalled, or cannot decide (an input fails), it sets `disablesleep 0`. It never
+  leaves a Mac unable to sleep by accident.
+
+### Inputs
+
+| Input | How it is read | When |
+|---|---|---|
+| Power source (AC / battery, battery %) | `pmset -g pslog` as the trigger (the daemon blocks on it), then `pmset -g ps` for the state: a change may come as a bare `com.apple.system.powersources` line with no details | at once, on every change |
+| Home network | the default gateway (`route -n get default`) and its MAC address (`arp -n`), compared with the remembered home networks | on start, then every `network_check` seconds (60) |
+| Heat | the line `Current pressure level: Nominal` of `powermetrics --samplers thermal -i 1000 -n 1` (root; without `-i` it samples 5 s): Nominal / Moderate / Heavy / Trapping / Sleeping | every `thermal_check` seconds (30) while awake |
+| Lid | `ioreg -r -k AppleClamshellState` | with every decision (for heat and display handling) |
+
+Wi-Fi names (SSIDs) are not used: recent macOS versions redact them unless the asking process has Location
+permission, which a root daemon does not get. A gateway MAC address identifies the home network without it.
+
+### Home networks
+
+Nobody types a MAC address. On the network to remember:
+
+```
+clamwake home add [name]     # remember the current network (its gateway MAC) as home, e.g. "clamwake home add home"
+clamwake home list           # number, name, gateway IP and MAC, when added
+clamwake home remove <n>     # forget one
+```
+
+- Any number can be remembered (home, office). With none, every network counts as home (AC alone decides).
+- A new router has a new MAC: `doctor` then says the network is not home and suggests `clamwake home add`.
+- Stored in `$(brew --prefix)/var/clamwake/homes` (one line each: MAC, IP, name, date).
+
+### Heat guard (always on)
+
+- Trip when the thermal pressure is `thermal_trip` (Heavy) or higher: set `disablesleep 0`, and if the lid is
+  closed, put the Mac to sleep (`pmset sleepnow`).
+- Stay tripped until the pressure has been Nominal for `thermal_clear` seconds (600); then decide again.
+- Every trip and clear is logged.
+
+### Display
+
+`disablesleep` does not turn the built-in display off when the lid closes; it stays lit until `displaysleep` runs
+out. When the lid closes while awake, clamwake runs `pmset displaysleepnow`.
+
+## Diagnosis
+
+`clamwake doctor` prints each input, whether it allows staying awake, and the decision, with the reason and what to
+do when it says no:
+
+```
+mode        auto
+power       AC (100%)                          ok
+network     gateway 192.168.1.1 aa:bb:cc:…     home ("home")
+heat        Nominal                            ok
+lid         closed
+daemon      running (pid 123), last decision 12 s ago
+decision    awake (disablesleep 1)
+```
+
+e.g. `network  gateway 10.0.0.1 11:22:…  not home: run "clamwake home add" here if it is`, or
+`daemon  not running: sudo brew services start clamwake`.
+
+## Settings
+
+`$(brew --prefix)/etc/clamwake.conf` (zsh `key=value`):
+
+```
+battery_floor=20      # mode on: sleep at or below this battery %
+thermal_trip=Heavy    # Moderate | Heavy | Trapping
+thermal_clear=600     # seconds of Nominal before awake again
+thermal_check=30
+network_check=60
+```
+
+## Files
+
+| Path | What |
+|---|---|
+| `bin/clamwake` | the command: `on`, `off`, `auto`, `status`, `doctor`, `log`, `home add/list/remove` |
+| `libexec/clamwaked` | the daemon loop |
+| `$(brew --prefix)/etc/clamwake.conf` | settings |
+| `$(brew --prefix)/var/clamwake/mode` | the mode |
+| `$(brew --prefix)/var/clamwake/homes` | the remembered home networks |
+| `$(brew --prefix)/var/log/clamwake.log` | decisions, trips, errors |
+| LaunchDaemon (root) | started by `sudo brew services start clamwake` |
+
+## Install
+
+```
+brew install otaqq/tap/clamwake
+sudo brew services start clamwake
+clamwake home add home    # once, on the home network
+clamwake doctor           # check every input and the decision
+```
+
+`clamwake on|off|auto` changes the mode without sudo (a file the daemon watches); only the daemon runs `pmset`.
+
+## Requirements
+
+macOS 14 or later, Apple Silicon (tested on a MacBook Air). zsh and the tools above ship with macOS.
+
+## Not in the first version
+
+- Menu bar icon: later, as a SwiftBar plugin (SwiftBar is open source and installs with Homebrew) that calls
+  `clamwake status` and `on|off|auto`.
+- Exact temperatures (IOHID, needs Swift or C): only if thermal pressure proves too coarse.
+
+## Checked (2026-10-29, MacBook Air Mac17,3, macOS 26.6 25G72)
+
+- `powermetrics --samplers thermal -n 1` (root) prints `Current pressure level: Nominal`, after sampling 5 s.
+- `pmset -g pslog` runs without root; it starts with the current source (`Now drawing from 'AC Power'`). It also
+  printed a bare `com.apple.system.powersources` line while the charger stayed in: such lines are not always a change
+  of source, so the daemon reads `pmset -g ps` and acts only when the source differs.
+- Pulling the charger out and back in: `pmset -g pslog` printed `Now drawing from 'Battery Power'` / `'AC Power'`
+  with `com.apple.system.powersources.source` lines, and kept printing across the sleeps in between.
+- With the lid open, on AC and `pmset sleep 0`, the Mac still slept: after the charger woke it (FullWake), it went
+  back to sleep 4 s later (`Notification Wake Back to Sleep`), and earlier by `Maintenance Sleep`. On battery it
+  went to `Idle Sleep` 5 s after the charger was pulled. So an open lid is not enough either; `disablesleep` is.
+- `pmset displaysleepnow` works without root. A `caffeinate -u` assertion still active turns the display on again.
+- `route -n get default` and `arp -n <gateway>` give the gateway IP and MAC without root.
+- Homebrew is at /opt/homebrew and not on the PATH of a non-login shell: call it by its full path.
+
+## To check before building
+
+- The other level names of thermal pressure (only Nominal seen so far).
+- Whether `pmset -g pslog` keeps reporting across sleep, wake and reboot, and how the daemon should restart it.
+- How Homebrew services runs a root LaunchDaemon for a formula (`sudo brew services`), and where it puts the plist.
+- That the display lights again when the lid opens after `pmset displaysleepnow`, and that it works from the root
+  daemon with the lid closed. (mac-keepawake dims it instead, with a C helper on the private DisplayServices
+  framework that must run in the user session; turning the display off should need neither.)
+
+## Prior art
+
+- [fainir/mac-keepawake](https://github.com/fainir/mac-keepawake) (MIT): shell, root LaunchDaemon following
+  `pmset -g pslog` to keep the lid-closed Mac awake on AC. clamwake takes this approach.
+- [acastro2/lid-awake](https://github.com/acastro2/lid-awake) (MIT): Swift menu bar app with a thermal guard
+  (trip at 90 °C, clear below 75 °C).
+- [karmahacker/battguard](https://github.com/karmahacker/battguard): low-battery sleep and turning the display off
+  when the lid closes.
+- [Aboudjem/Sleepless](https://github.com/Aboudjem/Sleepless) (MIT): menu bar app with a battery floor, Homebrew cask.
+
+## License
+
+MIT.

@@ -1,0 +1,112 @@
+#!/bin/zsh
+# clamwaked: keep the Mac awake with the lid closed while the conditions hold (see docs/SPEC.md "Behaviour").
+# Runs as root (LaunchDaemon). Sets `pmset -a disablesleep` 1 or 0, and always 0 when it stops.
+# --dry-run: decide and log only, never change anything with pmset (runs without root; heat is then unknown).
+zmodload zsh/datetime
+source ${0:A:h}/clamwake-lib.zsh
+
+DRY=0
+[[ ${1:-} == --dry-run ]] && DRY=1
+TICK=5                      # seconds between looks at the lid and the mode file
+mkdir -p $VAR ${LOG_FILE:h}
+# Run as root, the daemon would leave var/clamwake owned by root, and `clamwake home add` (the user) could not write
+# there: hand the folder to the owner of the prefix
+(( EUID == 0 )) && chown $(stat -f %Su:%Sg $CLAMWAKE_PREFIX) $VAR
+
+tripped=0                   # heat guard tripped
+nominal_since=0             # when the pressure became Nominal while tripped
+last_thermal=0; level=""
+last_network=0; home=0; home_name=""
+was_closed=-1
+current=-1                  # disablesleep as we last set it (-1: not yet)
+finished=0
+
+run() {                     # pmset that changes something: logged only in a dry run
+  if (( DRY )); then log "dry-run: would run pmset $*"; else pmset "$@"; fi
+}
+
+finish() {
+  (( finished )) && return
+  finished=1
+  run -a disablesleep 0
+  log "stopped: disablesleep 0"
+  [[ -n ${PSLOG_PID:-} ]] && kill $PSLOG_PID 2>/dev/null
+  exit 0
+}
+trap finish INT TERM HUP EXIT
+
+check_heat() {
+  local now=$1
+  (( now - last_thermal >= thermal_check )) || return
+  last_thermal=$now
+  level=$(thermal_level)
+  [[ -n $level ]] || return
+  if (( ${LEVEL[$level]:-0} >= ${LEVEL[$thermal_trip]:-2} )); then
+    if (( ! tripped )); then
+      tripped=1; log "heat: $level, tripped"
+      lid_closed && { log "sleep now (heat, lid closed)"; run sleepnow; }
+    fi
+    nominal_since=0
+  elif (( tripped )); then
+    if [[ $level == Nominal ]]; then
+      (( nominal_since )) || nominal_since=$now
+      if (( now - nominal_since >= thermal_clear )); then
+        tripped=0; log "heat: Nominal for ${thermal_clear}s, cleared"
+      fi
+    else
+      nominal_since=0
+    fi
+  fi
+}
+
+decide() {                  # $1=1: a line from pmset -g pslog (the power may have changed, or the Mac just woke)
+  local now=$EPOCHSECONDS m src pct closed want=0 why
+  m=$(mode); src=$(power_source); pct=$(battery_percent)
+  if lid_closed; then closed=1; else closed=0; fi
+
+  # Right after a wake the network may not be up yet: with no gateway, look again at every tick, not only after
+  # network_check, or the Mac falls asleep again before it is seen to be home
+  if (( ${1:-0} || now - last_network >= network_check )); then
+    if at_home; then home=1; else home=0; fi
+    home_name=$REPLY
+    [[ -n $(gateway_ip) ]] && last_network=$now
+  fi
+  [[ $m == off ]] || check_heat $now
+
+  if [[ $m == off ]]; then why="mode off"
+  elif (( tripped )); then why="heat ($level)"
+  elif [[ $m == on && $src == Battery ]] && (( ${pct:-0} <= battery_floor )); then why="battery ${pct}% <= ${battery_floor}%"
+  elif [[ $m == on ]]; then want=1; why="mode on"
+  elif [[ $src != AC ]]; then why="on battery"
+  elif (( ! home )); then why="not a home network"
+  else want=1; why="AC, home $home_name"
+  fi
+
+  if (( want != current )); then
+    run -a disablesleep $want
+    log "decision: disablesleep $want ($why; mode $m, $src ${pct}%, lid closed $closed)"
+    current=$want
+  fi
+  # The lid just closed while awake: disablesleep leaves the display lit, so turn it off
+  if (( want && closed && was_closed == 0 )); then
+    log "lid closed: display off"; run displaysleepnow
+  fi
+  was_closed=$closed
+
+  print -r -- "time=$now mode=$m decision=$want reason=$why power=$src battery=$pct home=$home home_name=$home_name heat=${level:-unknown} tripped=$tripped lid_closed=$closed dry_run=$DRY pid=$$" > $STATE_FILE.tmp &&
+    mv $STATE_FILE.tmp $STATE_FILE
+}
+
+if (( DRY )); then log "started (dry run) pid $$"; else log "started pid $$"; fi
+
+# Power changes come as lines from `pmset -g pslog` (not every line is a change, so each one only means "look
+# again"); without a line, look again every TICK seconds for the lid, the mode file, the network and the heat
+while true; do
+  coproc pmset -g pslog
+  PSLOG_PID=$!
+  while kill -0 $PSLOG_PID 2>/dev/null; do
+    if read -t $TICK -p line; then decide 1; else decide; fi
+  done
+  log "pmset -g pslog ended; starting it again"
+  sleep 1
+done

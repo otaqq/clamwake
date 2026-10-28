@@ -1,0 +1,106 @@
+#!/bin/zsh
+# clamwake: control and inspect clamwaked (see README.md). No root needed: the daemon reads the files written here.
+zmodload zsh/datetime
+source ${0:A:h:h}/libexec/clamwake-lib.zsh
+
+usage() {
+  cat <<'EOF'
+usage: clamwake <command>
+  auto | on | off        set the mode (auto: AC and a home network; on: always; off: never)
+  status                 one line: mode and what the daemon decided
+  doctor                 every input, the decision and what to do about it
+  home add [name]        remember the network the Mac is on now as home
+  home list              the remembered home networks
+  home remove <n>        forget one (number from home list)
+  log [n]                the last n lines of the log (20)
+EOF
+}
+
+state() {                  # the daemon's last state as an associative array STATE
+  typeset -gA STATE=()
+  [[ -r $STATE_FILE ]] || return 1
+  local kv
+  for kv in ${(s: :)"$(<$STATE_FILE)"}; do
+    [[ $kv == *=* ]] && STATE[${kv%%=*}]=${kv#*=}
+  done
+  # reason may hold spaces: read it whole
+  STATE[reason]=$(sed -n 's/.*reason=\(.*\) power=.*/\1/p' $STATE_FILE)
+}
+
+daemon_pid() { pgrep -f 'libexec/clamwaked' | head -1; }
+
+cmd_mode() {
+  mkdir -p $VAR
+  print $1 > $MODE_FILE
+  print "mode: $1 (the daemon applies it within a few seconds)"
+}
+
+cmd_status() {
+  if ! state; then print "mode $(mode); daemon has not run yet"; return; fi
+  local age=$(( EPOCHSECONDS - ${STATE[time]:-0} ))
+  print "mode $(mode), $( (( STATE[decision] )) && print awake || print normal) (${STATE[reason]}), ${age}s ago"
+}
+
+row() { printf '%-10s %-40s %s\n' "$@"; }
+
+cmd_doctor() {
+  local m=$(mode) src=$(power_source) pct=$(battery_percent) ip mac
+  ip=$(gateway_ip); mac=$(gateway_mac "$ip")
+  row mode "$m" "$( [[ $m == auto ]] && print '' || print '(clamwake auto to follow the conditions)')"
+  if [[ $src == AC ]]; then row power "AC (${pct}%)" ok
+  else row power "battery (${pct}%)" "$( [[ $m == auto ]] && print 'no: auto needs AC' || print '')"; fi
+  if at_home; then row network "gateway ${ip:-none} ${mac:-?}" "home ($REPLY)"
+  else row network "gateway ${ip:-none} ${mac:-?}" "not home: run \"clamwake home add\" here if it is"; fi
+  local pid=$(daemon_pid)
+  if state; then
+    row heat "${STATE[heat]}" "$( (( STATE[tripped] )) && print "tripped: waits for Nominal ${thermal_clear}s" || print ok)"
+  else
+    row heat unknown "(read by the daemon)"
+  fi
+  row lid "$(lid_closed && print closed || print open)" ""
+  if [[ -n $pid ]]; then
+    row daemon "running (pid $pid)" "$(state && print "last decision $(( EPOCHSECONDS - ${STATE[time]:-0} ))s ago$( (( STATE[dry_run] )) && print ', dry run')")"
+  else
+    row daemon "not running" "sudo brew services start clamwake"
+  fi
+  local sd=$(sleep_disabled)
+  if state; then
+    row decision "$( (( STATE[decision] )) && print awake || print normal) (${STATE[reason]})" "pmset disablesleep is $sd"
+  else
+    row decision "-" "pmset disablesleep is $sd"
+  fi
+}
+
+cmd_home() {
+  mkdir -p $VAR
+  case ${1:-list} in
+    add)
+      local ip mac name=${2:-home}
+      ip=$(gateway_ip); mac=$(gateway_mac "$ip")
+      [[ -n $mac ]] || { print -u2 "no default gateway with a MAC address: is the Mac on a network?"; return 1; }
+      if [[ -s $HOMES_FILE ]] && awk -F'\t' -v m=$mac '$1 == m {f=1} END {exit !f}' $HOMES_FILE; then
+        print "already remembered: $mac"; return
+      fi
+      printf '%s\t%s\t%s\t%s\n' $mac $ip $name "$(date +%F)" >> $HOMES_FILE
+      print "remembered: $name (gateway $ip, $mac)";;
+    list)
+      [[ -s $HOMES_FILE ]] || { print "none remembered: every network counts as home"; return; }
+      awk -F'\t' '{printf "%d  %-12s %-16s %s  %s\n", NR, $3, $2, $1, $4}' $HOMES_FILE;;
+    remove)
+      [[ ${2:-} == <-> ]] || { print -u2 "usage: clamwake home remove <n>"; return 1; }
+      local tmp=$HOMES_FILE.tmp
+      awk -v n=$2 'NR != n' $HOMES_FILE > $tmp && mv $tmp $HOMES_FILE
+      print "removed $2";;
+    *) usage; return 1;;
+  esac
+}
+
+case ${1:-} in
+  auto|on|off) cmd_mode $1;;
+  status) cmd_status;;
+  doctor) cmd_doctor;;
+  home) shift; cmd_home "$@";;
+  log) tail -n ${2:-20} $LOG_FILE;;
+  ""|-h|--help|help) usage;;
+  *) usage; exit 1;;
+esac

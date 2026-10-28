@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- clamwake LaunchDaemon (root) for a manual install: replace PREFIX, copy to /Library/LaunchDaemons and
+     `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.otaqq.clamwake.plist`.
+     With Homebrew, `sudo brew services start clamwake` makes this from the formula instead. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.github.otaqq.clamwake</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>PREFIX/libexec/clamwaked</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardErrorPath</key>
+  <string>PREFIX/var/log/clamwake.err</string>
+</dict>
+</plist>
