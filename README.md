@@ -99,8 +99,8 @@ idle_tick=60          # on battery in auto, or in off
 ```
 
 Stops the daemon (it sets `disablesleep 0` as it stops), sets `disablesleep 0` once more, and removes every file
-above, the settings and remembered home networks too. Folders under `/usr/local` are removed only when nothing else
-is left in them. Safe to run again.
+above, the settings and remembered home networks too (`--keep-data` keeps them and the log). Folders under
+`/usr/local` are removed only when nothing else is left in them. Safe to run again.
 
 If the files are removed while the LaunchDaemon stays, launchd still runs it, finds clamwaked gone and sets
 `disablesleep 0`. `clamwake doctor` warns when sleep is disabled but no daemon is deciding; `sudo pmset -a

@@ -47,4 +47,5 @@ $PREFIX/bin/clamwake doctor
 print
 [[ -s $PREFIX/var/clamwake/homes ]] ||
   print "No home network remembered: every network counts as home. On the home network, run: clamwake home add home"
-print "To remove clamwake: $HERE/uninstall.sh"
+if [[ $HERE == */Caskroom/* ]]; then print "To remove clamwake: brew uninstall clamwake (--zap: settings and home networks too)"
+else print "To remove clamwake: $HERE/uninstall.sh"; fi
