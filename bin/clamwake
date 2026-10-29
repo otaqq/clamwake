@@ -64,7 +64,9 @@ cmd_doctor() {
     row daemon "not running" "sudo brew services start clamwake"
   fi
   local sd=$(sleep_disabled)
-  if state; then
+  if [[ -z $pid ]]; then     # the state file holds the last decision of a daemon that is gone: not a decision now
+    row decision "none (daemon not running)" "pmset disablesleep is $sd"
+  elif state; then
     local note="pmset disablesleep is $sd"
     # The daemon decided, but pmset did not do it (a dry run changes nothing on purpose)
     [[ -n $pid && ${STATE[dry_run]} == 0 && ${STATE[decision]} != $sd ]] && note+=", not applied: see clamwake log"
@@ -74,7 +76,7 @@ cmd_doctor() {
   fi
   # Sleep disabled with no daemon deciding: the Mac will not sleep even with the lid closed, on battery too
   if [[ $sd == 1 ]] && { [[ -z $pid ]] || ! state || (( EPOCHSECONDS - ${STATE[time]:-0} > 3 * idle_tick )); }; then
-    row WARNING "sleep is disabled, but clamwaked is not deciding" "the Mac will not sleep: sudo pmset -a disablesleep 0"
+    row WARNING "sleep disabled, nothing deciding" "the Mac will not sleep: sudo pmset -a disablesleep 0"
   fi
 }
 
