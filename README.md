@@ -8,7 +8,8 @@ closed, macOS sleeps even on AC with `pmset sleep 0`; the network can wake it on
 `pmset disablesleep 1` is the only setting that keeps it awake, and it is global: clamwake switches it on and off by
 the conditions below, and always back off when it stops.
 
-Status: first version, not yet tested on a Mac. See [docs/SPEC.md](docs/SPEC.md) for the design and what was checked.
+Status: first version, tested on a MacBook Air as a root LaunchDaemon, not yet packaged for Homebrew. See
+[docs/SPEC.md](docs/SPEC.md) for the design and what was checked.
 
 ## Install
 

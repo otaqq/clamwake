@@ -1,9 +1,9 @@
-# clamwake — specification (draft)
+# clamwake — specification
 
 Keep a MacBook awake with the lid closed while it is plugged in (and, optionally, only on the home network), and let
 it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with Homebrew.
 
-Status: draft, 2026-10-29. First version written (bin/, libexec/), not yet run on a Mac.
+Status: 2026-10-29. Runs as a root LaunchDaemon on a MacBook Air (see "Checked"); not yet packaged for Homebrew.
 
 ## Why
 
@@ -154,14 +154,33 @@ macOS 14 or later, Apple Silicon (tested on a MacBook Air). zsh and the tools ab
 - `route -n get default` and `arp -n <gateway>` give the gateway IP and MAC without root.
 - Homebrew is at /opt/homebrew and not on the PATH of a non-login shell: call it by its full path.
 
-## To check before building
+Running clamwaked as a root LaunchDaemon (the plist in share/, `launchctl bootstrap system`), same day and Mac:
 
-- The other level names of thermal pressure (only Nominal seen so far).
-- Whether `pmset -g pslog` keeps reporting across sleep, wake and reboot, and how the daemon should restart it.
-- How Homebrew services runs a root LaunchDaemon for a formula (`sudo brew services`), and where it puts the plist.
-- That the display lights again when the lid opens after `pmset displaysleepnow`, and that it works from the root
-  daemon with the lid closed. (mac-keepawake dims it instead, with a C helper on the private DisplayServices
-  framework that must run in the user session; turning the display off should need neither.)
+- `sudo launchctl submit` runs the job as the calling user, not root (pmset then fails); `launchctl bootstrap system`
+  with a root-owned plist in /Library/LaunchDaemons runs it as root, also over ssh.
+- Lid closed on AC, `disablesleep 1`: the Mac stayed awake and reachable over the network for 4.5 h.
+- Lid closed, charger pulled: `disablesleep 0` within a second, and the Mac slept 9 s later (Idle Sleep). Another
+  time it slept only after about 2 min, while an app held a `PreventUserIdleSystemSleep` assertion.
+- Lid closed, charger plugged in: the Mac woke and was awake again (`disablesleep 1`) within 1-2 s, twice. Once the
+  network was not up yet at the wake, the daemon saw no home network, and the Mac went back to sleep 45 s later.
+- `pmset -g pslog` kept reporting across sleeps and wakes (not checked across a reboot).
+- pslog's output reaches a pipe in pieces, so zsh's `read -t` does not time out while waiting for the rest of a line;
+  `sysread -t` (zsh/system) does.
+- `pmset` run without root prints `'pmset' must be run as root...` and still exits 0.
+- `SleepDisabled` is stored in /Library/Preferences/com.apple.PowerManagement.plist.
+- `powermetrics --samplers thermal -i 1000 -n 1` from the daemon read `Nominal`.
+- A plist pointing at a missing clamwaked set `disablesleep` back to 0.
+
+## To check
+
+- The other level names of thermal pressure (only Nominal seen so far), and a heat trip.
+- Whether `pmset -g pslog` keeps reporting across a reboot.
+- How Homebrew services runs a root LaunchDaemon for a formula (`sudo brew services`), where it puts the plist, and
+  whether `brew uninstall` stops a running service.
+- That `pmset displaysleepnow` from the root daemon really turns the display off with the lid closed (it ran without
+  an error), and that the display lights again when the lid opens. (mac-keepawake dims it instead, with a C helper
+  on the private DisplayServices framework that must run in the user session; turning the display off should need
+  neither.)
 
 ## Prior art
 
