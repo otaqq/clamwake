@@ -3,7 +3,8 @@
 # Runs as root (LaunchDaemon). Sets `pmset -a disablesleep` 1 or 0, and always 0 when it stops.
 # --dry-run: decide and log only, never change anything with pmset (runs without root; heat is then unknown).
 zmodload zsh/datetime zsh/system
-source ${0:A:h}/clamwake-lib.zsh
+# Without the library nothing can be decided: let the Mac sleep
+source ${0:A:h}/clamwake-lib.zsh || { [[ ${1:-} == --dry-run ]] || pmset -a disablesleep 0; exit 1; }
 
 DRY=0
 [[ ${1:-} == --dry-run ]] && DRY=1

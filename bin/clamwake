@@ -69,6 +69,10 @@ cmd_doctor() {
   else
     row decision "-" "pmset disablesleep is $sd"
   fi
+  # Sleep disabled with no daemon deciding: the Mac will not sleep even with the lid closed, on battery too
+  if [[ $sd == 1 ]] && { [[ -z $pid ]] || ! state || (( EPOCHSECONDS - ${STATE[time]:-0} > 3 * idle_tick )); }; then
+    row WARNING "sleep is disabled, but clamwaked is not deciding" "the Mac will not sleep: sudo pmset -a disablesleep 0"
+  fi
 }
 
 cmd_home() {

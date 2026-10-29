@@ -26,7 +26,11 @@ clamwake runs as a root LaunchDaemon (`clamwaked`) and sets `disablesleep` to 1 
 - The mode is kept across restarts (state file). `clamwake on|off|auto` changes it; `clamwake status` prints one
   line (mode and decision), `clamwake doctor` the full picture (see "Diagnosis").
 - Whenever clamwake stops, is uninstalled, or cannot decide (an input fails), it sets `disablesleep 0`. It never
-  leaves a Mac unable to sleep by accident.
+  leaves a Mac unable to sleep by accident. (`disablesleep` is stored in
+  /Library/Preferences/com.apple.PowerManagement.plist as `SleepDisabled`, so a 1 left behind outlives a reboot.)
+  The LaunchDaemon starts clamwaked only if it is there and sets `disablesleep 0` otherwise, so a clamwake removed
+  while its LaunchDaemon stays still lets the Mac sleep; `clamwake doctor` warns when sleep is disabled but no daemon
+  is deciding.
 
 ### Inputs
 

@@ -101,6 +101,19 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.otaqq.clamwake.
 # stop and remove: sudo launchctl bootout system/io.github.otaqq.clamwake (sets disablesleep 0)
 ```
 
+## Uninstall
+
+Stop the daemon first; it sets `disablesleep 0` when it stops.
+
+```sh
+sudo brew services stop clamwake    # or, without Homebrew: sudo launchctl bootout system/io.github.otaqq.clamwake
+brew uninstall clamwake             # or: sudo rm /Library/LaunchDaemons/io.github.otaqq.clamwake.plist
+```
+
+If clamwake is removed while the LaunchDaemon stays, launchd still runs it, finds clamwaked gone and sets
+`disablesleep 0`. `clamwake doctor` warns when sleep is disabled but no daemon is deciding; `sudo pmset -a
+disablesleep 0` lets the Mac sleep again by hand.
+
 ## Requirements
 
 macOS 14 or later, Apple Silicon. zsh and every tool used ship with macOS.
