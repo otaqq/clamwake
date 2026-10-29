@@ -1,7 +1,7 @@
 # clamwake — specification
 
 Keep a MacBook awake with the lid closed while it is plugged in (and, optionally, only on the home network), and let
-it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with install.sh.
+it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with Homebrew (a cask) or install.sh.
 
 Status: 2026-10-29. Runs as a root LaunchDaemon on a MacBook Air (see "Checked").
 
@@ -123,8 +123,7 @@ no sudo. The daemon runs as root, so it must not run files the user can change.
 ## Install
 
 ```
-git clone https://github.com/otaqq/clamwake.git && cd clamwake
-./install.sh              # as the normal user; asks for the password when it needs root. Again after git pull
+brew install otaqq/tap/clamwake                  # or, from a clone: ./install.sh (as the normal user)
 clamwake home add home    # once, on the home network
 clamwake doctor           # check every input and the decision
 ```
@@ -132,9 +131,14 @@ clamwake doctor           # check every input and the decision
 `install.sh` makes only the folders under `/usr/local` that are missing (on an Intel Mac, Homebrew owns some of
 them), copies the files, installs the plist and starts the daemon; it keeps the settings and home networks of an
 earlier install. `uninstall.sh` stops the daemon, sets `disablesleep 0`, removes every file above (settings and home
-networks too) and the folders left empty. Like the other shell tools of its kind (mac-keepawake, battguard), clamwake
-is not packaged for Homebrew: `brew uninstall` keeps `etc/` and `var/`, and whether it stops a running root service
-was not checked.
+networks too) and the folders left empty; `--keep-data` keeps the settings, home networks and log. Both refuse a
+plain root shell; under sudo they give var/clamwake to the user behind sudo.
+
+Homebrew: a cask in the tap [otaqq/homebrew-tap](https://github.com/otaqq/homebrew-tap) (`Casks/clamwake.rb`), not a
+formula, because a formula installs into the Homebrew prefix, owned by the user, and the root daemon must not run
+files the user can change. The cask downloads the tagged source tarball and runs the same scripts with sudo (a cask's
+installer must not be interactive): `install.sh` to install, `uninstall.sh --keep-data` to uninstall (Homebrew
+upgrades by uninstalling first, so the settings and home networks must stay), and with `--zap` then `uninstall.sh`.
 
 `clamwake on|off|auto` changes the mode without sudo (a file the daemon watches); only the daemon runs `pmset`.
 
@@ -144,7 +148,6 @@ macOS 14 or later, Apple Silicon (tested on a MacBook Air). zsh and the tools ab
 
 ## Not in the first version
 
-- A Homebrew tap: only if others want it (see "Install").
 - Menu bar icon: later, as a SwiftBar plugin (SwiftBar is open source and installs with Homebrew) that calls
   `clamwake status` and `on|off|auto`.
 - Exact temperatures (IOHID, needs Swift or C): only if thermal pressure proves too coarse.
@@ -194,11 +197,20 @@ Installed with install.sh into /usr/local, same day and Mac:
   fanless MacBook Air brought the pressure to `Moderate`; the daemon tripped and set 0 in the same second. After the
   load stopped, the pressure was Nominal within a minute, and the daemon cleared and set 1 after 60 s of Nominal.
 
+Homebrew 7.0.9, same Mac:
+
+- `brew install otaqq/tap/clamwake` tapped otaqq/tap, ran install.sh with sudo (one password prompt) and used the home
+  networks kept by an earlier `--keep-data`.
+- `brew uninstall clamwake` left only etc/, var/clamwake and var/log; `brew uninstall --zap clamwake` ran
+  `uninstall.sh --keep-data` first, then `uninstall.sh` (the staged scripts were still there), and left /usr/local
+  as before the install, no plist, `SleepDisabled` 0.
+
 ## To check
 
 - The level names above Moderate (`Heavy`, `Trapping`, `Sleeping`: not seen yet), and a trip at the default
   `thermal_trip=Heavy`.
 - A heat trip with the lid closed (the daemon then runs `pmset sleepnow`).
+- `brew upgrade clamwake` (needs a second release).
 
 ## Prior art
 

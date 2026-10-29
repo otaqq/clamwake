@@ -13,18 +13,25 @@ design and what was checked.
 
 ## Install
 
-Run `install.sh` as your normal user (not with sudo); it asks for your password when it needs root.
+```sh
+brew install otaqq/tap/clamwake    # asks for your password: it installs a root LaunchDaemon
+clamwake home add home             # once, on the home network (optional)
+clamwake doctor                    # check every input and the decision
+```
+
+`brew upgrade clamwake` updates it and keeps the settings and remembered home networks.
+
+Without Homebrew, run `install.sh` from a clone as your normal user (not with sudo); it asks for your password
+when it needs root:
 
 ```sh
 git clone https://github.com/otaqq/clamwake.git
 cd clamwake
 ./install.sh              # also to update, after git pull
-clamwake home add home    # once, on the home network (optional)
-clamwake doctor           # check every input and the decision
 ```
 
-It copies the files into `/usr/local` (owned by root: the daemon runs as root) and starts the LaunchDaemon
-`io.github.otaqq.clamwake`.
+Either way the files are copied into `/usr/local` (owned by root: the daemon runs as root) and the LaunchDaemon
+`io.github.otaqq.clamwake` is started.
 
 ## Use
 
@@ -95,10 +102,12 @@ idle_tick=60          # on battery in auto, or in off
 ## Uninstall
 
 ```sh
-./uninstall.sh
+brew uninstall clamwake          # keeps the settings and remembered home networks
+brew uninstall --zap clamwake    # removes them too
+./uninstall.sh                   # from the clone, without Homebrew
 ```
 
-Stops the daemon (it sets `disablesleep 0` as it stops), sets `disablesleep 0` once more, and removes every file
+`uninstall.sh` (which Homebrew runs too) stops the daemon (it sets `disablesleep 0` as it stops), sets `disablesleep 0` once more, and removes every file
 above, the settings and remembered home networks too (`--keep-data` keeps them and the log). Folders under
 `/usr/local` are removed only when nothing else is left in them. Safe to run again.
 
