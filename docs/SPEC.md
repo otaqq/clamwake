@@ -1,9 +1,9 @@
 # clamwake — specification
 
 Keep a MacBook awake with the lid closed while it is plugged in (and, optionally, only on the home network), and let
-it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with Homebrew.
+it sleep again as soon as it is unplugged or runs hot. Written in zsh; installed with install.sh.
 
-Status: 2026-10-29. Runs as a root LaunchDaemon on a MacBook Air (see "Checked"); not yet packaged for Homebrew.
+Status: 2026-10-29. Runs as a root LaunchDaemon on a MacBook Air (see "Checked").
 
 ## Why
 
@@ -59,7 +59,7 @@ clamwake home remove <n>     # forget one
 
 - Any number can be remembered (home, office). With none, every network counts as home (AC alone decides).
 - A new router has a new MAC: `doctor` then says the network is not home and suggests `clamwake home add`.
-- Stored in `$(brew --prefix)/var/clamwake/homes` (one line each: MAC, IP, name, date).
+- Stored in `/usr/local/var/clamwake/homes` (one line each: MAC, IP, name, date).
 
 ### Heat guard (always on)
 
@@ -89,12 +89,11 @@ decision    awake (disablesleep 1)
 ```
 
 e.g. `network  gateway 10.0.0.1 11:22:…  not home: run "clamwake home add" here if it is`, or
-`daemon  not running: sudo brew services start clamwake`.
+`daemon  not running: run install.sh again (from the clone)`.
 
 ## Settings
 
-`$(brew --prefix)/etc/clamwake.conf`: `key=value` lines, read as data and never run (the daemon is root, the file
-belongs to the user). Unknown keys and invalid values are reported (in the error log or on the terminal) and ignored.
+`/usr/local/etc/clamwake.conf` (owned by root): `key=value` lines, read as data and never run (the daemon is root). Unknown keys and invalid values are reported (in the error log or on the terminal) and ignored.
 
 ```
 battery_floor=20      # mode on: sleep at or below this battery %
@@ -110,22 +109,32 @@ idle_tick=60          # on battery in auto, or in off
 
 | Path | What |
 |---|---|
-| `bin/clamwake` | the command: `on`, `off`, `auto`, `status`, `doctor`, `log`, `home add/list/remove` |
-| `libexec/clamwaked` | the daemon loop |
-| `$(brew --prefix)/etc/clamwake.conf` | settings |
-| `$(brew --prefix)/var/clamwake/mode` | the mode |
-| `$(brew --prefix)/var/clamwake/homes` | the remembered home networks |
-| `$(brew --prefix)/var/log/clamwake.log` | decisions, trips, errors |
-| LaunchDaemon (root) | started by `sudo brew services start clamwake` |
+| `/usr/local/bin/clamwake` | the command: `on`, `off`, `auto`, `status`, `doctor`, `log`, `home add/list/remove` |
+| `/usr/local/libexec/clamwaked` | the daemon loop (with `clamwake-lib.zsh`, shared with the command) |
+| `/usr/local/etc/clamwake.conf` | settings |
+| `/usr/local/var/clamwake/mode` | the mode |
+| `/usr/local/var/clamwake/homes` | the remembered home networks |
+| `/usr/local/var/log/clamwake.log` | decisions, trips, errors |
+| `/Library/LaunchDaemons/io.github.otaqq.clamwake.plist` | the LaunchDaemon (root) |
+
+Everything is owned by root, except `/usr/local/var/clamwake/`, which belongs to the user so that the command needs
+no sudo. The daemon runs as root, so it must not run files the user can change.
 
 ## Install
 
 ```
-brew install otaqq/tap/clamwake
-sudo brew services start clamwake
+git clone https://github.com/otaqq/clamwake.git && cd clamwake
+./install.sh              # as the normal user; asks for the password when it needs root. Again after git pull
 clamwake home add home    # once, on the home network
 clamwake doctor           # check every input and the decision
 ```
+
+`install.sh` makes only the folders under `/usr/local` that are missing (on an Intel Mac, Homebrew owns some of
+them), copies the files, installs the plist and starts the daemon; it keeps the settings and home networks of an
+earlier install. `uninstall.sh` stops the daemon, sets `disablesleep 0`, removes every file above (settings and home
+networks too) and the folders left empty. Like the other shell tools of its kind (mac-keepawake, battguard), clamwake
+is not packaged for Homebrew: `brew uninstall` keeps `etc/` and `var/`, and whether it stops a running root service
+was not checked.
 
 `clamwake on|off|auto` changes the mode without sudo (a file the daemon watches); only the daemon runs `pmset`.
 
@@ -135,6 +144,7 @@ macOS 14 or later, Apple Silicon (tested on a MacBook Air). zsh and the tools ab
 
 ## Not in the first version
 
+- A Homebrew tap: only if others want it (see "Install").
 - Menu bar icon: later, as a SwiftBar plugin (SwiftBar is open source and installs with Homebrew) that calls
   `clamwake status` and `on|off|auto`.
 - Exact temperatures (IOHID, needs Swift or C): only if thermal pressure proves too coarse.
@@ -175,8 +185,6 @@ Running clamwaked as a root LaunchDaemon (the plist in share/, `launchctl bootst
 
 - The other level names of thermal pressure (only Nominal seen so far), and a heat trip.
 - Whether `pmset -g pslog` keeps reporting across a reboot.
-- How Homebrew services runs a root LaunchDaemon for a formula (`sudo brew services`), where it puts the plist, and
-  whether `brew uninstall` stops a running service.
 - That `pmset displaysleepnow` from the root daemon really turns the display off with the lid closed (it ran without
   an error), and that the display lights again when the lid opens. (mac-keepawake dims it instead, with a C helper
   on the private DisplayServices framework that must run in the user session; turning the display off should need

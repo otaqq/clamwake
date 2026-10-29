@@ -9,10 +9,9 @@ source ${0:A:h}/clamwake-lib.zsh || { [[ ${1:-} == --dry-run ]] || pmset -a disa
 DRY=0
 [[ ${1:-} == --dry-run ]] && DRY=1
 wait_for=$tick              # seconds until the next look without a line from pslog (set by decide)
+# var/clamwake belongs to the user (install.sh makes it), so `clamwake on|off|auto` and `home add` need no sudo;
+# it is made here only when missing, as for a dry run from the clone
 mkdir -p $VAR ${LOG_FILE:h}
-# Run as root, the daemon would leave var/clamwake owned by root, and `clamwake home add` (the user) could not write
-# there: hand the folder to the owner of the prefix
-(( EUID == 0 )) && chown $(stat -f %Su:%Sg $CLAMWAKE_PREFIX) $VAR
 
 tripped=0                   # heat guard tripped
 nominal_since=0             # when the pressure became Nominal while tripped

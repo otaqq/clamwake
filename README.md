@@ -8,17 +8,23 @@ closed, macOS sleeps even on AC with `pmset sleep 0`; the network can wake it on
 `pmset disablesleep 1` is the only setting that keeps it awake, and it is global: clamwake switches it on and off by
 the conditions below, and always back off when it stops.
 
-Status: first version, tested on a MacBook Air as a root LaunchDaemon, not yet packaged for Homebrew. See
-[docs/SPEC.md](docs/SPEC.md) for the design and what was checked.
+Status: first version, tested on a MacBook Air as a root LaunchDaemon. See [docs/SPEC.md](docs/SPEC.md) for the
+design and what was checked.
 
 ## Install
 
+Run `install.sh` as your normal user (not with sudo); it asks for your password when it needs root.
+
 ```sh
-brew install otaqq/tap/clamwake
-sudo brew services start clamwake
+git clone https://github.com/otaqq/clamwake.git
+cd clamwake
+./install.sh              # also to update, after git pull
 clamwake home add home    # once, on the home network (optional)
 clamwake doctor           # check every input and the decision
 ```
+
+It copies the files into `/usr/local` (owned by root: the daemon runs as root) and starts the LaunchDaemon
+`io.github.otaqq.clamwake`.
 
 ## Use
 
@@ -62,7 +68,8 @@ decision   awake (AC, home home)                    pmset disablesleep is 1
 
 ## Settings
 
-`$(brew --prefix)/etc/clamwake.conf` ([share/clamwake.conf](share/clamwake.conf)); restart the daemon after a change.
+`/usr/local/etc/clamwake.conf` ([share/clamwake.conf](share/clamwake.conf)), owned by root: edit it with sudo, then
+restart the daemon (`sudo launchctl kickstart -k system/io.github.otaqq.clamwake`).
 
 ```
 battery_floor=20      # mode on: sleep at or below this battery %
@@ -78,42 +85,37 @@ idle_tick=60          # on battery in auto, or in off
 
 | Path | What |
 |---|---|
-| `$(brew --prefix)/etc/clamwake.conf` | settings |
-| `$(brew --prefix)/var/clamwake/` | `mode`, `homes`, `state` (the daemon's last decision) |
-| `$(brew --prefix)/var/log/clamwake.log` | decisions, trips, errors |
+| `/usr/local/bin/clamwake` | the command |
+| `/usr/local/libexec/clamwaked`, `clamwake-lib.zsh` | the daemon |
+| `/usr/local/etc/clamwake.conf` | settings |
+| `/usr/local/var/clamwake/` | `mode`, `homes`, `state` (the daemon's last decision); owned by you |
+| `/usr/local/var/log/clamwake.log` | decisions, trips, errors (`clamwake.err`: what the daemon printed) |
+| `/Library/LaunchDaemons/io.github.otaqq.clamwake.plist` | the LaunchDaemon |
 
-## Without Homebrew
+## Uninstall
 
-Clone the repository anywhere; `etc/` and `var/` are then made inside it. Try the daemon without root first: it
-decides and logs, but changes nothing (heat is unknown without root).
+```sh
+./uninstall.sh
+```
+
+Stops the daemon (it sets `disablesleep 0` as it stops), sets `disablesleep 0` once more, and removes every file
+above, the settings and remembered home networks too. Folders under `/usr/local` are removed only when nothing else
+is left in them. Safe to run again.
+
+If the files are removed while the LaunchDaemon stays, launchd still runs it, finds clamwaked gone and sets
+`disablesleep 0`. `clamwake doctor` warns when sleep is disabled but no daemon is deciding; `sudo pmset -a
+disablesleep 0` lets the Mac sleep again by hand.
+
+## Try it without installing
+
+From the clone, without root: the daemon decides and logs but changes nothing (heat is unknown without root), and
+keeps its files in `etc/` and `var/` of the clone.
 
 ```sh
 libexec/clamwaked --dry-run &
 bin/clamwake doctor
 tail -f var/log/clamwake.log
 ```
-
-To run it for real, replace `PREFIX` in [share/io.github.otaqq.clamwake.plist](share/io.github.otaqq.clamwake.plist)
-with the clone's path, then:
-
-```sh
-sudo cp share/io.github.otaqq.clamwake.plist /Library/LaunchDaemons/
-sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.otaqq.clamwake.plist
-# stop and remove: sudo launchctl bootout system/io.github.otaqq.clamwake (sets disablesleep 0)
-```
-
-## Uninstall
-
-Stop the daemon first; it sets `disablesleep 0` when it stops.
-
-```sh
-sudo brew services stop clamwake    # or, without Homebrew: sudo launchctl bootout system/io.github.otaqq.clamwake
-brew uninstall clamwake             # or: sudo rm /Library/LaunchDaemons/io.github.otaqq.clamwake.plist
-```
-
-If clamwake is removed while the LaunchDaemon stays, launchd still runs it, finds clamwaked gone and sets
-`disablesleep 0`. `clamwake doctor` warns when sleep is disabled but no daemon is deciding; `sudo pmset -a
-disablesleep 0` lets the Mac sleep again by hand.
 
 ## Requirements
 

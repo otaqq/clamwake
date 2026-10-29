@@ -2,10 +2,6 @@
 # Paths come from the install prefix (the folder above bin/ and libexec/), or CLAMWAKE_CONF / CLAMWAKE_VAR.
 
 CLAMWAKE_PREFIX=${CLAMWAKE_PREFIX:-${${(%):-%x}:A:h:h}}
-# Homebrew keeps etc/ and var/ under its own prefix, not under the formula's keg
-if [[ $CLAMWAKE_PREFIX == */Cellar/* ]]; then
-  CLAMWAKE_PREFIX=${CLAMWAKE_PREFIX%%/Cellar/*}
-fi
 CONF=${CLAMWAKE_CONF:-$CLAMWAKE_PREFIX/etc/clamwake.conf}
 VAR=${CLAMWAKE_VAR:-$CLAMWAKE_PREFIX/var/clamwake}
 MODE_FILE=$VAR/mode
@@ -70,7 +66,7 @@ gateway_mac() {
 # 0 when the current network is a remembered home (or none is remembered), with the home's name in REPLY
 at_home() {
   REPLY=""
-  [[ -s $HOMES_FILE ]] || { REPLY="(any network)"; return 0; }
+  [[ -s $HOMES_FILE ]] || { REPLY="any network"; return 0; }
   local mac; mac=$(gateway_mac "$(gateway_ip)")
   [[ -n $mac ]] || return 1
   local line; line=$(awk -F'\t' -v m=$mac '$1 == m {print $3; exit}' $HOMES_FILE)

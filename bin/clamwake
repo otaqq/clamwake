@@ -61,7 +61,7 @@ cmd_doctor() {
   if [[ -n $pid ]]; then
     row daemon "running (pid $pid)" "$(state && print "last decision $(( EPOCHSECONDS - ${STATE[time]:-0} ))s ago$( (( STATE[dry_run] )) && print ', dry run')")"
   else
-    row daemon "not running" "sudo brew services start clamwake"
+    row daemon "not running" "run install.sh again (from the clone)"
   fi
   local sd=$(sleep_disabled)
   if [[ -z $pid ]]; then     # the state file holds the last decision of a daemon that is gone: not a decision now

@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- clamwake LaunchDaemon (root) for a manual install: replace PREFIX, copy to /Library/LaunchDaemons and
-     `sudo launchctl bootstrap system /Library/LaunchDaemons/io.github.otaqq.clamwake.plist`.
-     With Homebrew, `sudo brew services start clamwake` makes this from the formula instead.
+<!-- clamwake LaunchDaemon (root). install.sh replaces PREFIX, copies this to /Library/LaunchDaemons and starts it
+     with `launchctl bootstrap system`.
      When clamwaked is gone (uninstalled while this plist stays), launchd still starts this job: it then sets
      disablesleep 0, so a removed clamwake never leaves the Mac unable to sleep. exec, so launchd's TERM reaches
      clamwaked itself. -->
