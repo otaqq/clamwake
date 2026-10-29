@@ -22,15 +22,28 @@ was_closed=-1
 current=-1                  # disablesleep as we last set it (-1: not yet)
 finished=0
 
-run() {                     # pmset that changes something: logged only in a dry run
-  if (( DRY )); then log "dry-run: would run pmset $*"; else pmset "$@"; fi
+pmset_out=""                # what the last pmset printed
+pmset_error=""              # the last failure, logged once while it lasts
+
+failed() { [[ $1 == "$pmset_error" ]] || log "$1"; pmset_error=$1; return 1; }
+
+run() {                     # pmset that changes something: logged only in a dry run; 1 when it failed
+  (( DRY )) && { log "dry-run: would run pmset $*"; return 0; }
+  pmset_out=$(pmset "$@" 2>&1) || failed "pmset $* failed: ${pmset_out:-no message}"
+}
+
+set_disablesleep() {        # pmset exits 0 even when it fails (not root), so read SleepDisabled back
+  run -a disablesleep $1 || return
+  (( DRY )) && return 0
+  local now=$(sleep_disabled)
+  [[ $now == $1 ]] || { failed "pmset -a disablesleep $1 did not apply (SleepDisabled is $now): ${pmset_out:-no message}"; return; }
+  pmset_error=""
 }
 
 finish() {
   (( finished )) && return
   finished=1
-  run -a disablesleep 0
-  log "stopped: disablesleep 0"
+  if set_disablesleep 0; then log "stopped: disablesleep 0"; else log "stopped, but disablesleep could not be set to 0"; fi
   [[ -n ${PSLOG_PID:-} ]] && kill $PSLOG_PID 2>/dev/null
   exit 0
 }
@@ -84,8 +97,8 @@ decide() {                  # $1=1: a line from pmset -g pslog (the power may ha
   else want=1; why="AC, home $home_name"
   fi
 
-  if (( want != current )); then
-    run -a disablesleep $want
+  # Only what pmset really did counts: after a failure, current stays and the next look tries again
+  if (( want != current )) && set_disablesleep $want; then
     log "decision: disablesleep $want ($why; mode $m, $src ${pct}%, lid closed $closed)"
     current=$want
   fi

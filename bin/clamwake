@@ -65,7 +65,10 @@ cmd_doctor() {
   fi
   local sd=$(sleep_disabled)
   if state; then
-    row decision "$( (( STATE[decision] )) && print awake || print normal) (${STATE[reason]})" "pmset disablesleep is $sd"
+    local note="pmset disablesleep is $sd"
+    # The daemon decided, but pmset did not do it (a dry run changes nothing on purpose)
+    [[ -n $pid && ${STATE[dry_run]} == 0 && ${STATE[decision]} != $sd ]] && note+=", not applied: see clamwake log"
+    row decision "$( (( STATE[decision] )) && print awake || print normal) (${STATE[reason]})" "$note"
   else
     row decision "-" "pmset disablesleep is $sd"
   fi
