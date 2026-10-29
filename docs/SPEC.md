@@ -181,14 +181,24 @@ Running clamwaked as a root LaunchDaemon (the plist in share/, `launchctl bootst
 - `powermetrics --samplers thermal -i 1000 -n 1` from the daemon read `Nominal`.
 - A plist pointing at a missing clamwaked set `disablesleep` back to 0.
 
+Installed with install.sh into /usr/local, same day and Mac:
+
+- install.sh, then install.sh again over the running daemon, then uninstall.sh: /usr/local was as before the
+  install (no files or folders left), no plist, job or process, `SleepDisabled` 0.
+- The display: with the lid closed, clamwake ran `pmset displaysleepnow` and pmset's log said `Display is turned off`
+  in the same second; the display stayed dark, and lit again when the lid was opened a little.
+- Reboot: the daemon got TERM and set 0 before the shutdown; after the boot it started without anyone logged in, first
+  saw no network (not home, 0), and found the home network at the next tick, 10 s later (1). pslog ran again.
+  (A LaunchAgent, such as a user's Ollama, does not start until someone logs in.)
+- Heat, with `thermal_trip=Moderate` and `thermal_clear=60` for the test: about 4 min of LLM generation on the
+  fanless MacBook Air brought the pressure to `Moderate`; the daemon tripped and set 0 in the same second. After the
+  load stopped, the pressure was Nominal within a minute, and the daemon cleared and set 1 after 60 s of Nominal.
+
 ## To check
 
-- The other level names of thermal pressure (only Nominal seen so far), and a heat trip.
-- Whether `pmset -g pslog` keeps reporting across a reboot.
-- That `pmset displaysleepnow` from the root daemon really turns the display off with the lid closed (it ran without
-  an error), and that the display lights again when the lid opens. (mac-keepawake dims it instead, with a C helper
-  on the private DisplayServices framework that must run in the user session; turning the display off should need
-  neither.)
+- The level names above Moderate (`Heavy`, `Trapping`, `Sleeping`: not seen yet), and a trip at the default
+  `thermal_trip=Heavy`.
+- A heat trip with the lid closed (the daemon then runs `pmset sleepnow`).
 
 ## Prior art
 
