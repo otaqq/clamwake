@@ -1,5 +1,6 @@
 #!/bin/zsh
-# Remove clamwake and let the Mac sleep as usual. Run it as your normal user (not with sudo). Safe to run again.
+# Remove clamwake and let the Mac sleep as usual. Run it as your normal user (not with sudo); Homebrew runs it with
+# sudo. Safe to run again.
 # --keep-data: keep the settings, the remembered home networks and the log (Homebrew's uninstall and upgrade use
 # this; `brew uninstall --zap` removes them too).
 # No `set -e` on purpose: go on and remove as much as possible.
@@ -8,7 +9,10 @@ set -u
 keep=0
 [[ ${1:-} == --keep-data ]] && keep=1
 
-(( EUID != 0 )) || { print -u2 "run it as your normal user (no sudo): it asks for your password when needed"; exit 1; }
+if (( EUID == 0 )); then
+  [[ -n ${SUDO_USER:-} ]] || { print -u2 "run it as your normal user (no sudo): it asks for your password when needed"; exit 1; }
+  sudo() { "$@"; }
+fi
 
 PREFIX=/usr/local
 LABEL=io.github.otaqq.clamwake

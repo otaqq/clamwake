@@ -1,12 +1,19 @@
 #!/bin/zsh
 # clamwake installer. Run it from the clone as your normal user (not with sudo): it asks for your password when it
-# needs root. Safe to run again, also to update after `git pull`.
+# needs root. Homebrew runs it with sudo instead. Safe to run again, also to update after `git pull`.
 # Copies everything into /usr/local, owned by root (the daemon runs as root, so it must not run files the user can
 # change), except var/clamwake, which `clamwake on|off|auto` and `clamwake home add` write without sudo.
 set -eu
 
 [[ $(uname) == Darwin ]] || { print -u2 "clamwake runs on macOS only"; exit 1; }
-(( EUID != 0 )) || { print -u2 "run it as your normal user (no sudo): it asks for your password when needed"; exit 1; }
+# Under sudo (as Homebrew runs it), var/clamwake goes to the user behind sudo; a plain root shell has no such user
+if (( EUID == 0 )); then
+  [[ -n ${SUDO_USER:-} ]] || { print -u2 "run it as your normal user (no sudo): it asks for your password when needed"; exit 1; }
+  owner=$SUDO_USER
+  sudo() { "$@"; }
+else
+  owner=$(id -un)
+fi
 
 HERE=${0:A:h}
 PREFIX=/usr/local
@@ -23,7 +30,7 @@ sudo install -o root -g wheel -m 755 $HERE/libexec/clamwaked $PREFIX/libexec/cla
 sudo install -o root -g wheel -m 644 $HERE/libexec/clamwake-lib.zsh $PREFIX/libexec/clamwake-lib.zsh
 # Keep the settings and the remembered home networks of an earlier install
 [[ -e $PREFIX/etc/clamwake.conf ]] || sudo install -o root -g wheel -m 644 $HERE/share/clamwake.conf $PREFIX/etc/clamwake.conf
-[[ -d $PREFIX/var/clamwake ]] || sudo install -d -o $(id -un) -g $(id -gn) -m 755 $PREFIX/var/clamwake
+[[ -d $PREFIX/var/clamwake ]] || sudo install -d -o $owner -g $(id -gn $owner) -m 755 $PREFIX/var/clamwake
 
 print "==> Installing the LaunchDaemon $PLIST"
 tmp=$(mktemp)
