@@ -13,7 +13,7 @@ HOMES_FILE=$VAR/homes
 STATE_FILE=$VAR/state
 LOG_FILE=${CLAMWAKE_LOG:-$CLAMWAKE_PREFIX/var/log/clamwake.log}
 
-# Settings (clamwake.conf may override them)
+# Settings (clamwake.conf may override them, see read_conf)
 battery_floor=20
 thermal_trip=Heavy
 thermal_clear=600
@@ -21,7 +21,30 @@ thermal_check=30
 network_check=60
 tick=10                     # seconds between looks on AC or in mode on (lid, mode file, network, heat)
 idle_tick=60                # on battery in auto, or in off: only the mode file can change anything
-[[ -r $CONF ]] && source $CONF
+
+# clamwake.conf is read as data, never run: the daemon is root, and the file belongs to the user. Only known keys
+# with valid values are taken; any other line is reported and ignored
+read_conf() {
+  local line key value n=0
+  [[ -r $CONF ]] || return 0
+  while IFS= read -r line || [[ -n $line ]]; do
+    (( n++ ))
+    line=${line%%\#*}
+    [[ $line == *[^[:space:]]* ]] || continue
+    key=${${line%%=*}//[[:space:]]/} value=${${line#*=}//[[:space:]]/}
+    if [[ $line == *=* ]] && case $key in
+         battery_floor) [[ $value == <0-100> ]];;
+         thermal_trip) [[ $value == (Moderate|Heavy|Trapping) ]];;
+         thermal_clear|thermal_check|network_check|tick|idle_tick) [[ $value == <1-> ]];;
+         *) false;;
+       esac; then
+      typeset -g $key=$value
+    else
+      print -u2 -r -- "clamwake: $CONF:$n: ignored: $line"
+    fi
+  done < $CONF
+}
+read_conf
 
 typeset -A LEVEL=(Nominal 0 Moderate 1 Heavy 2 Trapping 3 Sleeping 4)
 

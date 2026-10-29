@@ -93,7 +93,8 @@ e.g. `network  gateway 10.0.0.1 11:22:…  not home: run "clamwake home add" her
 
 ## Settings
 
-`$(brew --prefix)/etc/clamwake.conf` (zsh `key=value`):
+`$(brew --prefix)/etc/clamwake.conf`: `key=value` lines, read as data and never run (the daemon is root, the file
+belongs to the user). Unknown keys and invalid values are reported (in the error log or on the terminal) and ignored.
 
 ```
 battery_floor=20      # mode on: sleep at or below this battery %
