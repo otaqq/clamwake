@@ -2,12 +2,12 @@
 # clamwaked: keep the Mac awake with the lid closed while the conditions hold (see docs/SPEC.md "Behaviour").
 # Runs as root (LaunchDaemon). Sets `pmset -a disablesleep` 1 or 0, and always 0 when it stops.
 # --dry-run: decide and log only, never change anything with pmset (runs without root; heat is then unknown).
-zmodload zsh/datetime
+zmodload zsh/datetime zsh/system
 source ${0:A:h}/clamwake-lib.zsh
 
 DRY=0
 [[ ${1:-} == --dry-run ]] && DRY=1
-TICK=5                      # seconds between looks at the lid and the mode file
+wait_for=$tick              # seconds until the next look without a line from pslog (set by decide)
 mkdir -p $VAR ${LOG_FILE:h}
 # Run as root, the daemon would leave var/clamwake owned by root, and `clamwake home add` (the user) could not write
 # there: hand the folder to the owner of the prefix
@@ -64,14 +64,15 @@ decide() {                  # $1=1: a line from pmset -g pslog (the power may ha
   m=$(mode); src=$(power_source); pct=$(battery_percent)
   if lid_closed; then closed=1; else closed=0; fi
 
-  # Right after a wake the network may not be up yet: with no gateway, look again at every tick, not only after
-  # network_check, or the Mac falls asleep again before it is seen to be home
-  if (( ${1:-0} || now - last_network >= network_check )); then
+  # The network matters only in auto on AC. Right after a wake it may not be up yet: with no gateway, look again at
+  # every tick, not only after network_check, or the Mac falls asleep again before it is seen to be home
+  if [[ $m == auto && $src == AC ]] && (( ${1:-0} || now - last_network >= network_check )); then
     if at_home; then home=1; else home=0; fi
     home_name=$REPLY
     [[ -n $(gateway_ip) ]] && last_network=$now
   fi
-  [[ $m == off ]] || check_heat $now
+  # Heat only while awake (or tripped, to see it clear): powermetrics is the heaviest look
+  (( current == 1 || tripped )) && check_heat $now
 
   if [[ $m == off ]]; then why="mode off"
   elif (( tripped )); then why="heat ($level)"
@@ -92,6 +93,9 @@ decide() {                  # $1=1: a line from pmset -g pslog (the power may ha
     log "lid closed: display off"; run displaysleepnow
   fi
   was_closed=$closed
+  # On battery in auto, or in off, only the power (a line from pslog) and the mode file can change the decision:
+  # look less often to spare the battery
+  if [[ $m == on || ( $m == auto && $src == AC ) ]]; then wait_for=$tick; else wait_for=$idle_tick; fi
 
   print -r -- "time=$now mode=$m decision=$want reason=$why power=$src battery=$pct home=$home home_name=$home_name heat=${level:-unknown} tripped=$tripped lid_closed=$closed dry_run=$DRY pid=$$" > $STATE_FILE.tmp &&
     mv $STATE_FILE.tmp $STATE_FILE
@@ -99,14 +103,23 @@ decide() {                  # $1=1: a line from pmset -g pslog (the power may ha
 
 if (( DRY )); then log "started (dry run) pid $$"; else log "started pid $$"; fi
 
-# Power changes come as lines from `pmset -g pslog` (not every line is a change, so each one only means "look
-# again"); without a line, look again every TICK seconds for the lid, the mode file, the network and the heat
+# Power changes come as output from `pmset -g pslog` (not every line is a change, so any output only means "look
+# again"); without output, look again after tick (or idle_tick) seconds for the lid, the mode file, the network and
+# the heat. sysread, not read -t: pslog's lines reach the pipe in pieces, and read -t then waits for the rest of the
+# line instead of timing out
 while true; do
   coproc pmset -g pslog
   PSLOG_PID=$!
-  while kill -0 $PSLOG_PID 2>/dev/null; do
-    if read -t $TICK -p line; then decide 1; else decide; fi
+  exec {pslog}<&p
+  while true; do
+    sysread -i $pslog -t $wait_for -s 4096 chunk
+    case $? in
+      0) decide 1;;
+      4) decide;;           # timed out
+      *) break;;            # pslog ended
+    esac
   done
+  exec {pslog}<&-
   log "pmset -g pslog ended; starting it again"
   sleep 1
 done

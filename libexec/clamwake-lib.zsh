@@ -19,6 +19,8 @@ thermal_trip=Heavy
 thermal_clear=600
 thermal_check=30
 network_check=60
+tick=10                     # seconds between looks on AC or in mode on (lid, mode file, network, heat)
+idle_tick=60                # on battery in auto, or in off: only the mode file can change anything
 [[ -r $CONF ]] && source $CONF
 
 typeset -A LEVEL=(Nominal 0 Moderate 1 Heavy 2 Trapping 3 Sleeping 4)

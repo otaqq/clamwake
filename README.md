@@ -31,7 +31,7 @@ clamwake home add [name] | home list | home remove <n>
 clamwake log [n]
 ```
 
-No sudo: the command writes files the daemon reads every few seconds; only the daemon (root) runs `pmset`.
+No sudo: the command writes files the daemon reads within `tick` seconds (10; 60 on battery); only the daemon (root) runs `pmset`.
 
 ```
 mode       auto
@@ -69,6 +69,8 @@ thermal_trip=Heavy    # Moderate | Heavy | Trapping
 thermal_clear=600     # seconds of Nominal before awake again
 thermal_check=30
 network_check=60
+tick=10               # seconds between looks on AC or in mode on
+idle_tick=60          # on battery in auto, or in off
 ```
 
 ## Files

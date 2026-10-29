@@ -32,7 +32,7 @@ daemon_pid() { pgrep -f 'libexec/clamwaked' | head -1; }
 cmd_mode() {
   mkdir -p $VAR
   print $1 > $MODE_FILE
-  print "mode: $1 (the daemon applies it within a few seconds)"
+  print "mode: $1 (the daemon applies it within ${tick}s, ${idle_tick}s on battery)"
 }
 
 cmd_status() {

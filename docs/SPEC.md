@@ -33,9 +33,12 @@ clamwake runs as a root LaunchDaemon (`clamwaked`) and sets `disablesleep` to 1 
 | Input | How it is read | When |
 |---|---|---|
 | Power source (AC / battery, battery %) | `pmset -g pslog` as the trigger (the daemon blocks on it), then `pmset -g ps` for the state: a change may come as a bare `com.apple.system.powersources` line with no details | at once, on every change |
-| Home network | the default gateway (`route -n get default`) and its MAC address (`arp -n`), compared with the remembered home networks | on start, then every `network_check` seconds (60) |
+| Home network | the default gateway (`route -n get default`) and its MAC address (`arp -n`), compared with the remembered home networks | in `auto` on AC: when the power changes, then every `network_check` seconds (60); every tick while there is no gateway (right after a wake) |
 | Heat | the line `Current pressure level: Nominal` of `powermetrics --samplers thermal -i 1000 -n 1` (root; without `-i` it samples 5 s): Nominal / Moderate / Heavy / Trapping / Sleeping | every `thermal_check` seconds (30) while awake |
 | Lid | `ioreg -r -k AppleClamshellState` | with every decision (for heat and display handling) |
+
+Without a line from `pmset -g pslog`, the daemon looks again every `tick` seconds (10) on AC or in `on`, and every
+`idle_tick` seconds (60) on battery in `auto` or in `off`, where only the mode file can change the decision.
 
 Wi-Fi names (SSIDs) are not used: recent macOS versions redact them unless the asking process has Location
 permission, which a root daemon does not get. A gateway MAC address identifies the home network without it.
@@ -94,6 +97,8 @@ thermal_trip=Heavy    # Moderate | Heavy | Trapping
 thermal_clear=600     # seconds of Nominal before awake again
 thermal_check=30
 network_check=60
+tick=10               # seconds between looks on AC or in mode on
+idle_tick=60          # on battery in auto, or in off
 ```
 
 ## Files
